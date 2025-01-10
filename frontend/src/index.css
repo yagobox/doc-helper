@@ -1,3 +1,17 @@
+:root {
+  --bg-light: #ffffff;
+  --text-light: #333333;
+  --primary-light: #2196f3;
+  --secondary-light: #f5f5f5;
+  --border-light: #e0e0e0;
+
+  --bg-dark: #1a1a1a;
+  --text-dark: #ffffff;
+  --primary-dark: #64b5f6;
+  --secondary-dark: #333333;
+  --border-dark: #404040;
+}
+
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -9,4 +23,340 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+.light-theme {
+  background-color: var(--bg-light);
+  color: var(--text-light);
+}
+
+.dark-theme {
+  background-color: var(--bg-dark);
+  color: var(--text-dark);
+}
+
+.theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.light-theme .theme-toggle {
+  background-color: var(--secondary-light);
+  color: var(--text-light);
+}
+
+.dark-theme .theme-toggle {
+  background-color: var(--secondary-dark);
+  color: var(--text-dark);
+}
+
+.light-theme .app-container {
+  background-color: var(--bg-light);
+  color: var(--text-light);
+}
+
+.dark-theme .app-container {
+  background-color: var(--bg-dark);
+  color: var(--text-dark);
+}
+
+.light-theme .main-content {
+  background-color: var(--secondary-light);
+  border: 1px solid var(--border-light);
+}
+
+.dark-theme .main-content {
+  background-color: var(--secondary-dark);
+  border: 1px solid var(--border-dark);
+}
+
+.upload-section {
+  border: 2px dashed var(--border-light);
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  margin-bottom: 2rem;
+}
+
+.dark-theme .upload-section {
+  border-color: var(--border-dark);
+}
+
+.upload-section.dragging {
+  border-color: var(--primary-light);
+  background-color: rgba(33, 150, 243, 0.1);
+  transform: scale(1.02);
+}
+
+.dark-theme .upload-section.dragging {
+  border-color: var(--primary-dark);
+  background-color: rgba(100, 181, 246, 0.1);
+}
+
+.upload-label {
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+  display: block;
+  cursor: pointer;
+}
+
+.drag-text {
+  color: var(--text-light);
+  opacity: 0.7;
+  margin: 0.5rem 0;
+}
+
+.dark-theme .drag-text {
+  color: var(--text-dark);
+}
+
+.file-input {
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.file-input:disabled {
+  cursor: not-allowed;
+}
+
+.upload-status {
+  margin-top: 1rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  background-color: var(--secondary-light);
+  color: var(--text-light);
+}
+
+.dark-theme .upload-status {
+  background-color: var(--secondary-dark);
+  color: var(--text-dark);
+}
+
+.upload-status.success {
+  color: #4caf50;
+}
+
+.dark-theme .upload-status.success {
+  color: #81c784;
+}
+
+.previews-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin: 2rem 0;
+}
+
+.pdf-preview {
+  background: var(--bg-light);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.dark-theme .pdf-preview {
+  background: var(--bg-dark);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.pdf-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.dark-theme .pdf-header {
+  border-bottom-color: var(--border-dark);
+}
+
+.pdf-header h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: var(--text-light);
+}
+
+.dark-theme .pdf-header h3 {
+  color: var(--text-dark);
+}
+
+.pdf-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.pdf-controls button {
+  background: var(--primary-light);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dark-theme .pdf-controls button {
+  background: var(--primary-dark);
+}
+
+.pdf-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pdf-controls button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.pdf-container {
+  padding: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+  background: white;
+}
+
+.dark-theme .pdf-container {
+  background: var(--secondary-dark);
+}
+
+.pdf-container .react-pdf__Document {
+  max-width: 100%;
+  height: auto;
+}
+
+.pdf-container .react-pdf__Page {
+  max-width: 100%;
+  height: auto;
+}
+
+.pdf-container .react-pdf__Page canvas {
+  max-width: 100%;
+  height: auto !important;
+}
+
+.interaction-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  width: 100%;
+}
+
+.recent-searches {
+  background: var(--bg-light);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.dark-theme .recent-searches {
+  background: var(--bg-dark);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.recent-searches-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.recent-searches-header h3 {
+  margin: 0;
+  color: var(--text-light);
+  font-size: 1.2rem;
+}
+
+.dark-theme .recent-searches-header h3 {
+  color: var(--text-dark);
+}
+
+.clear-button {
+  background: none;
+  border: none;
+  color: var(--primary-light);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.dark-theme .clear-button {
+  color: var(--primary-dark);
+}
+
+.clear-button:hover {
+  text-decoration: underline;
+}
+
+.searches-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem;
+  background: var(--secondary-light);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dark-theme .search-item {
+  background: var(--secondary-dark);
+}
+
+.search-item:hover {
+  transform: translateX(4px);
+  background: var(--primary-light);
+  color: white;
+}
+
+.dark-theme .search-item:hover {
+  background: var(--primary-dark);
+}
+
+.search-text {
+  flex: 1;
+  margin-right: 1rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-time {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.search-item:hover .search-time {
+  opacity: 1;
 }
