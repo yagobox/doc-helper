@@ -100,20 +100,41 @@ app.post('/query', express.json(), async (req, res) => {
 
   try {
     console.log('Making OpenAI API call...');
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
+    
+    // First, get a summary of the document to reduce context length
+    const summaryCompletion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo-16k',
       messages: [
         {
           role: 'system',
-          content: `You are a helpful assistant that answers questions based on the provided PDF document. 
-                   Always base your answers on the document content only. If the answer cannot be found 
-                   in the document, say so clearly. Be concise but thorough.`
+          content: 'You are a helpful assistant that creates concise summaries of documents, focusing on key information like titles, main topics, and important details.'
         },
         {
           role: 'user',
-          content: `Document content: ${pdfContent}\n\nQuestion: ${question}\n\nPlease provide a clear, 
-                   concise answer based on the document content above. If the information isn't in the 
-                   document, please indicate that.`
+          content: `Please provide a concise summary of this document, including its title and main topics: ${pdfContent}`
+        }
+      ],
+      max_tokens: 1000,
+      temperature: 0.3,
+    });
+
+    const documentSummary = summaryCompletion.choices[0].message.content;
+
+    // Then, answer the specific question using the summary
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a helpful assistant that answers questions based on document summaries. 
+                   Always base your answers on the provided information only. If the answer cannot be found 
+                   in the information provided, say so clearly. Be concise but thorough.`
+        },
+        {
+          role: 'user',
+          content: `Document summary: ${documentSummary}\n\nQuestion: ${question}\n\nPlease provide a clear, 
+                   concise answer based on the document summary above. If the information isn't available, 
+                   please indicate that.`
         }
       ],
       max_tokens: 500,
