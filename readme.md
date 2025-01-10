@@ -1,96 +1,177 @@
 # Doc-Helper
 
-Un assistente intelligente per la documentazione che risponde alle tue domande analizzando la documentazione online tramite AI.
+An AI-powered documentation assistant that leverages advanced language models to analyze and respond to queries about PDF documents.
 
-## Panoramica del Progetto
+## Project Overview
 
-Doc-Helper è un'applicazione web intelligente che permette agli utenti di:
-- Porre domande in linguaggio naturale
-- Ottenere risposte accurate basate sulla documentazione online
-- Ricevere risposte contestuali ben formattate
+Doc-Helper is a modern web application that enables users to interact with PDF documents through natural language processing. Key features include:
+- Natural language query processing
+- Real-time PDF document analysis
+- Context-aware response generation
+- Multi-document support (up to 2 PDFs simultaneously)
+- Dark/Light theme support
+- Drag-and-drop file upload
+- Recent searches history
 
-## Architettura
+## Technical Architecture
 
-### Frontend
+### Frontend (React.js)
 
-L'interfaccia utente è composta da:
-- Un'interfaccia web moderna e pulita
-- Un campo di input per le domande
-- Un pulsante di invio per elaborare le richieste
-- Un'area di risposta con testo formattato e blocchi di codice
+The frontend is built with modern React.js (v18+) and implements:
+- **State Management**: React Hooks for local state management
+- **File Handling**: 
+  - Custom drag-and-drop implementation
+  - PDF preview using `react-pdf`
+  - File size validation (max 50MB)
+  - MIME type verification
+- **UI Components**:
+  - Responsive layout with CSS Grid/Flexbox
+  - Theme switching with CSS variables
+  - Error boundary implementation
+  - Loading states and progress indicators
+- **Local Storage**: 
+  - Theme preference persistence
+  - Recent searches caching
 
-### Backend
+### Backend (Node.js/Express)
 
-Il server gestisce:
-1. **Elaborazione delle Query**
-   - Riceve le domande degli utenti tramite API REST
-   - Elabora le query in linguaggio naturale
-   - Restituisce risposte formattate
+The server implements a robust architecture for handling document processing:
 
-2. **Accesso alla Documentazione**
-   Il sistema può accedere alla documentazione attraverso diversi metodi:
-   - Web scraping per documentazione online
-   - API ufficiali di documentazione quando disponibili
-   - Database locale indicizzato per la documentazione
-
-3. **Elaborazione AI**
-   - Utilizza Large Language Models (LLM) per:
-     - Comprendere le domande degli utenti
-     - Analizzare il contenuto della documentazione
-     - Generare risposte contestuali
-     - Riassumere le informazioni rilevanti
-
-## Stack Tecnologico
-
-- **Frontend**: React.js
-- **Backend**: Node.js
-- **Containerizzazione**: Docker
-- **Integrazione AI**: OpenAI/Azure OpenAI
-- **Archiviazione Documentazione**: Database vettoriale (opzionale)
-
-## Per Iniziare
-
-1. Clona il repository
-2. Configura le variabili d'ambiente:
-   ```bash
-   cp .env.example .env
-   # Modifica .env con la tua configurazione
-   ```
-3. Avvia l'applicazione:
-   ```bash
-   docker-compose up
+1. **File Processing Pipeline**:
+   ```javascript
+   Upload → Validation → PDF Parsing → Text Extraction → Chunk Generation → Embedding Creation
    ```
 
-L'applicazione sarà disponibile all'indirizzo `http://localhost:3000`
+2. **Core Components**:
+   - Express.js server with CORS support
+   - Multer for file upload handling
+   - PDF parsing using pdf-lib and pdf-parse
+   - OpenAI API integration for embeddings and query processing
+   - Node-cache for response caching (30-minute TTL)
 
-## Variabili d'Ambiente
+3. **Security Features**:
+   - File type validation
+   - Size limitations
+   - Automatic file cleanup
+   - Error handling and sanitization
 
-Variabili d'ambiente necessarie:
-- `OPENAI_API_KEY`: La tua chiave API OpenAI
-- Altre variabili di configurazione secondo necessità
+## Technical Stack
 
-## Sviluppo
+### Frontend Dependencies
+- React 18+
+- react-pdf: PDF rendering
+- CSS Modules: Styling
+- Web APIs: File handling, LocalStorage
 
-Per eseguire l'applicazione in modalità sviluppo:
+### Backend Dependencies
+- Node.js 16+
+- Express: Web framework
+- multer: File upload handling
+- pdf-lib: PDF processing
+- pdf-parse: Text extraction
+- node-cache: Response caching
+- uuid: Unique file identification
+- OpenAI API: Text embeddings and processing
 
-1. Avvia il backend:
+### Development Tools
+- ESLint: Code linting
+- Prettier: Code formatting
+- nodemon: Development server
+- Create React App: Frontend tooling
+
+## Getting Started
+
+1. Clone the repository:
    ```bash
+   git clone https://github.com/yourusername/doc-helper.git
+   cd doc-helper
+   ```
+
+2. Install dependencies:
+   ```bash
+   # Backend
    cd backend
    npm install
-   npm run dev
+
+   # Frontend
+   cd ../frontend
+   npm install
    ```
 
-2. Avvia il frontend:
+3. Configure environment variables:
    ```bash
+   # Backend
+   cp .env.example .env
+   ```
+   Required variables:
+   - `OPENAI_API_KEY`: Your OpenAI API key
+   - `PORT`: Backend server port (default: 5000)
+   - `MAX_FILE_SIZE`: Maximum file size in bytes (default: 50MB)
+
+4. Start the development servers:
+   ```bash
+   # Backend
+   cd backend
+   npm run dev
+
+   # Frontend
    cd frontend
-   npm install
    npm start
    ```
 
-## Contribuire
+The application will be available at `http://localhost:3000`
 
-I contributi sono benvenuti! Sentiti libero di inviare una Pull Request.
+## API Endpoints
 
-## Licenza
+### POST /upload
+- Handles PDF file uploads
+- Accepts multipart/form-data
+- Returns file metadata and processing status
 
-Questo progetto è open source e disponibile sotto licenza MIT.
+### POST /query
+- Processes natural language queries
+- Accepts JSON payload with question
+- Returns AI-generated response based on document context
+
+## Implementation Details
+
+### PDF Processing
+1. Files are uploaded and temporarily stored
+2. Text is extracted and split into chunks
+3. Embeddings are generated for each chunk
+4. Chunks are cached for 30 minutes
+5. Files are automatically cleaned up
+
+### Query Processing
+1. User query is received
+2. Relevant chunks are identified using cosine similarity
+3. Context is constructed from matching chunks
+4. OpenAI API generates response
+5. Response is cached for future similar queries
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
+
+Please ensure your code:
+- Passes ESLint checks
+- Includes appropriate tests
+- Follows the existing code style
+- Is well documented
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Technical Requirements
+
+- Node.js 16+
+- npm 7+
+- Modern web browser with ES6+ support
+- OpenAI API key
+- Minimum 1GB RAM
+- 100MB free disk space
