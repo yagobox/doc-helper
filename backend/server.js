@@ -8,7 +8,10 @@ const pdf = require('pdf-parse');
 const OpenAI = require('openai');
 const NodeCache = require('node-cache');
 const { v4: uuidv4 } = require('uuid');
-const { PDFDocument } = require('pdf-lib');
+const { PDFDocument: PDFLib } = require('pdf-lib');
+const mammoth = require('mammoth');
+const PDFDocument = require('pdfkit');
+const { Document, Packer, Paragraph, TextRun } = require('docx');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -31,15 +34,17 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const fileId = uuidv4();
-    cb(null, `${fileId}.pdf`);
+    cb(null, `${fileId}.${file.originalname.split('.').pop()}`);
   }
 });
 
+// File filter function
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype === 'application/pdf') {
+  const allowedTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Only PDF files are allowed'), false);
+    cb(new Error('Invalid file type. Only PDF, TXT, and DOC files are allowed.'));
   }
 };
 
@@ -57,10 +62,45 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Store PDF content and files in memory
+// Store PDF content, files, and history
 let pdfContents = [];
 let embeddings = [];
 let pdfFiles = new Map(); // Store PDF files for preview
+let documentHistory = []; // Store upload history
+let searchHistory = [];
+
+// Function to add document to history
+const addToHistory = (doc) => {
+  const historyEntry = {
+    id: uuidv4(),
+    filename: doc.name,
+    uploadDate: new Date().toISOString(),
+    pages: doc.pages,
+    size: doc.size
+  };
+  documentHistory.unshift(historyEntry); // Add to beginning of array
+  // Keep only last 50 entries
+  if (documentHistory.length > 50) {
+    documentHistory = documentHistory.slice(0, 50);
+  }
+  return historyEntry;
+};
+
+// Function to add search to history
+const addSearchToHistory = (question, answer, timestamp = new Date()) => {
+  const searchEntry = {
+    id: uuidv4(),
+    question,
+    answer,
+    timestamp
+  };
+  searchHistory.unshift(searchEntry);
+  // Keep only last 100 searches
+  if (searchHistory.length > 100) {
+    searchHistory = searchHistory.slice(0, 100);
+  }
+  return searchEntry;
+};
 
 // Cleanup function for PDF files
 function cleanupPdfFile(fileId) {
@@ -126,22 +166,182 @@ async function findRelevantChunks(question, numChunks = 3) {
     .slice(0, numChunks);
 }
 
+// Function to process document based on its type
+const processDocument = async (file) => {
+  const fileId = uuidv4();
+  let text = '';
+  let pages = 1;
+
+  try {
+    const dataBuffer = fs.readFileSync(file.path);
+
+    switch (file.mimetype) {
+      case 'application/pdf':
+        const pdfDoc = await PDFLib.load(dataBuffer);
+        pages = pdfDoc.getPageCount();
+        const pdfData = await pdf(dataBuffer);
+        text = pdfData.text;
+        break;
+
+      case 'text/plain':
+        text = dataBuffer.toString('utf-8');
+        // Count pages for txt (approximate by newlines)
+        pages = Math.ceil(text.split('\n').length / 45); // ~45 lines per page
+        break;
+
+      case 'application/msword':
+      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        // For DOC files, we'll need to extract text using mammoth
+        const result = await mammoth.extractRawText({ buffer: dataBuffer });
+        text = result.value;
+        // Approximate pages for doc (by characters)
+        pages = Math.ceil(text.length / 3000); // ~3000 chars per page
+        break;
+    }
+
+    const docInfo = {
+      id: fileId,
+      name: file.originalname,
+      pages: pages,
+      size: file.size,
+      text: text,
+      type: file.mimetype,
+      chunks: splitIntoChunks(text)
+    };
+
+    return docInfo;
+  } catch (error) {
+    console.error(`Error processing ${file.originalname}:`, error);
+    throw error;
+  }
+};
+
+// Function to generate PDF report
+const generatePDFReport = async (data, type = 'query') => {
+  const doc = new PDFDocument();
+  const filename = `${type}-report-${Date.now()}.pdf`;
+  const filePath = path.join(__dirname, 'temp', filename);
+
+  // Ensure temp directory exists
+  if (!fs.existsSync(path.join(__dirname, 'temp'))) {
+    fs.mkdirSync(path.join(__dirname, 'temp'));
+  }
+
+  const stream = fs.createWriteStream(filePath);
+  doc.pipe(stream);
+
+  // Add header
+  doc.fontSize(20).text(`${type === 'query' ? 'Query Result' : 'Search History'} Report`, {
+    align: 'center'
+  });
+  doc.moveDown();
+
+  if (type === 'query') {
+    // Single query result
+    doc.fontSize(14).text('Question:', { underline: true });
+    doc.fontSize(12).text(data.question);
+    doc.moveDown();
+    doc.fontSize(14).text('Answer:', { underline: true });
+    doc.fontSize(12).text(data.answer);
+  } else {
+    // Search history
+    data.forEach((item, index) => {
+      doc.fontSize(14).text(`Search ${index + 1}:`, { underline: true });
+      doc.fontSize(12).text(`Time: ${new Date(item.timestamp).toLocaleString()}`);
+      doc.fontSize(12).text(`Question: ${item.question}`);
+      doc.fontSize(12).text(`Answer: ${item.answer}`);
+      doc.moveDown();
+    });
+  }
+
+  doc.end();
+
+  return new Promise((resolve, reject) => {
+    stream.on('finish', () => resolve(filePath));
+    stream.on('error', reject);
+  });
+};
+
+// Function to generate DOC report
+const generateDOCReport = async (data, type = 'query') => {
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children: [
+        new Paragraph({
+          text: `${type === 'query' ? 'Query Result' : 'Search History'} Report`,
+          heading: 'Heading1',
+          spacing: { after: 200 }
+        })
+      ]
+    }]
+  });
+
+  if (type === 'query') {
+    // Single query result
+    doc.addSection({
+      children: [
+        new Paragraph({
+          children: [new TextRun({ text: 'Question:', bold: true })],
+          spacing: { after: 100 }
+        }),
+        new Paragraph({
+          text: data.question,
+          spacing: { after: 200 }
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: 'Answer:', bold: true })],
+          spacing: { after: 100 }
+        }),
+        new Paragraph({
+          text: data.answer
+        })
+      ]
+    });
+  } else {
+    // Search history
+    data.forEach((item, index) => {
+      doc.addSection({
+        children: [
+          new Paragraph({
+            children: [new TextRun({ text: `Search ${index + 1}:`, bold: true })],
+            spacing: { after: 100 }
+          }),
+          new Paragraph({
+            text: `Time: ${new Date(item.timestamp).toLocaleString()}`
+          }),
+          new Paragraph({
+            text: `Question: ${item.question}`
+          }),
+          new Paragraph({
+            text: `Answer: ${item.answer}`
+          }),
+          new Paragraph({
+            text: '',
+            spacing: { after: 200 }
+          })
+        ]
+      });
+    });
+  }
+
+  const filename = `${type}-report-${Date.now()}.docx`;
+  const filePath = path.join(__dirname, 'temp', filename);
+
+  // Ensure temp directory exists
+  if (!fs.existsSync(path.join(__dirname, 'temp'))) {
+    fs.mkdirSync(path.join(__dirname, 'temp'));
+  }
+
+  const buffer = await Packer.toBuffer(doc);
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+};
+
 // Upload PDF endpoint
 app.post('/upload', (req, res) => {
-  upload.array('pdf', 2)(req, res, async (err) => {
+  upload.array('documents', 2)(req, res, async (err) => {
     if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({
-          success: false,
-          error: 'File size too large. Maximum size is 50MB'
-        });
-      }
-      if (err.code === 'LIMIT_FILE_COUNT') {
-        return res.status(400).json({
-          success: false,
-          error: 'Too many files. Maximum is 2 files'
-        });
-      }
       return res.status(400).json({
         success: false,
         error: err.message
@@ -157,44 +357,26 @@ app.post('/upload', (req, res) => {
 
     try {
       const processedFiles = [];
-
+      
       for (const file of req.files) {
         try {
-          const pdfBytes = fs.readFileSync(file.path);
-          const pdfDoc = await PDFDocument.load(pdfBytes);
-          const data = await pdf(pdfBytes);
-          const chunks = splitIntoChunks(data.text);
+          const docInfo = await processDocument(file);
+          pdfContents.push(docInfo);
+          pdfFiles.set(docInfo.id, file);
           
-          // Get embeddings for each chunk
-          const chunkEmbeddings = await Promise.all(
-            chunks.map(chunk => getEmbedding(chunk))
-          );
-
-          const fileId = path.parse(file.filename).name;
-          pdfFiles.set(fileId, file.path);
+          // Add to history
+          const historyEntry = addToHistory(docInfo);
           
-          // Schedule cleanup
-          cleanupPdfFile(fileId);
-
-          pdfContents.push({
-            text: data.text,
-            name: file.originalname,
-            pages: data.numpages,
-            chunks,
-            fileId
-          });
-          
-          embeddings.push(chunkEmbeddings);
-
           processedFiles.push({
-            fileId: fileId,
-            name: file.originalname,
-            path: file.path,
-            pages: pdfDoc.getPageCount()
+            id: docInfo.id,
+            name: docInfo.name,
+            pages: docInfo.pages,
+            size: docInfo.size,
+            type: docInfo.type,
+            historyId: historyEntry.id
           });
         } catch (err) {
-          console.error(`Error processing PDF ${file.originalname}:`, err);
-          // Elimina il file se c'è un errore nel processarlo
+          console.error(`Error processing file ${file.originalname}:`, err);
           if (fs.existsSync(file.path)) {
             fs.unlinkSync(file.path);
           }
@@ -204,28 +386,16 @@ app.post('/upload', (req, res) => {
       if (processedFiles.length === 0) {
         return res.status(400).json({
           success: false,
-          error: 'No valid PDF files were processed'
+          error: 'No valid files were processed'
         });
       }
-
-      // Imposta il timer per la pulizia dei file
-      processedFiles.forEach(file => {
-        setTimeout(() => {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-            console.log(`Cleaned up file: ${file.path}`);
-          }
-        }, 30 * 60 * 1000); // 30 minuti
-      });
 
       res.json({
         success: true,
         files: processedFiles
       });
-
     } catch (error) {
       console.error('Upload error:', error);
-      // Pulisci i file in caso di errore
       if (req.files) {
         req.files.forEach(file => {
           if (fs.existsSync(file.path)) {
@@ -250,26 +420,133 @@ app.get('/pdf/:fileId', (req, res) => {
   res.sendFile(filePath);
 });
 
+// Get document history endpoint
+app.get('/history', (req, res) => {
+  res.json({
+    success: true,
+    history: documentHistory
+  });
+});
+
+// Get specific document history entry
+app.get('/history/:id', (req, res) => {
+  const historyEntry = documentHistory.find(entry => entry.id === req.params.id);
+  if (!historyEntry) {
+    return res.status(404).json({
+      success: false,
+      error: 'History entry not found'
+    });
+  }
+  res.json({
+    success: true,
+    entry: historyEntry
+  });
+});
+
+// Get search history endpoint
+app.get('/search-history', (req, res) => {
+  res.json({
+    success: true,
+    history: searchHistory
+  });
+});
+
+// Export query result endpoint
+app.post('/export-query', async (req, res) => {
+  try {
+    const { format, question, answer } = req.body;
+    
+    if (!question || !answer) {
+      return res.status(400).json({
+        success: false,
+        error: 'Question and answer are required'
+      });
+    }
+
+    let filePath;
+    if (format === 'pdf') {
+      filePath = await generatePDFReport({ question, answer }, 'query');
+    } else if (format === 'doc') {
+      filePath = await generateDOCReport({ question, answer }, 'query');
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid format. Use pdf or doc'
+      });
+    }
+
+    res.download(filePath, path.basename(filePath), (err) => {
+      if (err) {
+        console.error('Download error:', err);
+      }
+      // Clean up file after sending
+      fs.unlink(filePath, (unlinkErr) => {
+        if (unlinkErr) console.error('Error deleting temp file:', unlinkErr);
+      });
+    });
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate export file'
+    });
+  }
+});
+
+// Export search history endpoint
+app.post('/export-history', async (req, res) => {
+  try {
+    const { format } = req.body;
+    
+    if (searchHistory.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No search history available'
+      });
+    }
+
+    let filePath;
+    if (format === 'pdf') {
+      filePath = await generatePDFReport(searchHistory, 'history');
+    } else if (format === 'doc') {
+      filePath = await generateDOCReport(searchHistory, 'history');
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid format. Use pdf or doc'
+      });
+    }
+
+    res.download(filePath, path.basename(filePath), (err) => {
+      if (err) {
+        console.error('Download error:', err);
+      }
+      // Clean up file after sending
+      fs.unlink(filePath, (unlinkErr) => {
+        if (unlinkErr) console.error('Error deleting temp file:', unlinkErr);
+      });
+    });
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate export file'
+    });
+  }
+});
+
 // Query endpoint
 app.post('/query', express.json(), async (req, res) => {
   console.log('Received query:', req.body);
-
   const { question } = req.body;
-
-  if (pdfContents.length === 0) {
-    console.log('No PDF content available');
-    return res.status(400).json({
-      error: 'No PDF documents have been uploaded yet',
-      success: false
-    });
-  }
-
+  
   try {
     // Check cache first
     const cacheKey = question.toLowerCase().trim();
     const cachedResponse = queryCache.get(cacheKey);
     if (cachedResponse) {
       console.log('Returning cached response');
+      addSearchToHistory(question, cachedResponse);
       return res.json({
         answer: cachedResponse,
         success: true,
@@ -277,15 +554,9 @@ app.post('/query', express.json(), async (req, res) => {
       });
     }
 
-    // Find most relevant chunks
+    // Existing query logic...
     const relevantChunks = await findRelevantChunks(question);
     
-    // Build context from relevant chunks
-    const context = relevantChunks.map(({ docIndex, chunkIndex }) => {
-      const doc = pdfContents[docIndex];
-      return `[Document: ${doc.name}]\n${doc.chunks[chunkIndex]}`;
-    }).join('\n\n');
-
     const completion = await openai.chat.completions.create({
       messages: [
         {
@@ -294,17 +565,21 @@ app.post('/query', express.json(), async (req, res) => {
         },
         {
           role: "user",
-          content: `Context from documents:\n${context}\n\nQuestion: ${question}\n\nProvide a clear answer based on the context above. If the information isn't available in the provided context, please indicate that.`
+          content: `Context from documents:\n${relevantChunks.map(({ docIndex, chunkIndex }) => {
+            const doc = pdfContents[docIndex];
+            return `[Document: ${doc.name}]\n${doc.chunks[chunkIndex]}`;
+          }).join('\n\n')}\n\nQuestion: ${question}\n\nProvide a clear answer based on the context above. If the information isn't available in the provided context, please indicate that.`
         }
       ],
       model: "gpt-3.5-turbo",
       temperature: 0.7,
     });
 
-    console.log('OpenAI API response received');
-    
     const answer = completion.choices[0].message.content;
     
+    // Add to search history
+    addSearchToHistory(question, answer);
+
     // Cache the response
     queryCache.set(cacheKey, answer);
 
@@ -313,13 +588,11 @@ app.post('/query', express.json(), async (req, res) => {
       success: true,
       cached: false
     });
-
   } catch (error) {
-    console.error('Error processing query:', error);
+    console.error('Query error:', error);
     res.status(500).json({
-      error: 'Failed to process query',
-      details: error.message,
-      success: false
+      success: false,
+      error: 'Failed to process query'
     });
   }
 });

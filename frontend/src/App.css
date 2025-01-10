@@ -18,10 +18,9 @@ body {
 
 /* App Container */
 .app-container {
-  min-height: 100vh;
-  padding: 2rem;
   max-width: 1200px;
   margin: 0 auto;
+  padding: 20px;
 }
 
 /* Header */
@@ -43,47 +42,91 @@ body {
 
 /* Main Content */
 .main-content {
-  background-color: white;
-  border-radius: 1rem;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  padding: 2rem;
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 30px;
+  margin-top: 20px;
+}
+
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 /* Upload Section */
 .upload-section {
-  margin-bottom: 2rem;
-  text-align: center;
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.upload-label {
-  display: inline-block;
-  padding: 0.75rem 1.5rem;
-  background-color: var(--primary-color);
+.drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 6px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.drop-zone.dragging {
+  border-color: #007bff;
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.upload-content button {
+  background-color: #007bff;
   color: white;
-  border-radius: 0.5rem;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
-.upload-label:hover {
-  background-color: var(--primary-hover);
-}
-
-.file-input {
-  display: none;
+.upload-content button:hover {
+  background-color: #0056b3;
 }
 
 .upload-status {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  background-color: #f1f5f9;
-  color: #64748b;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 4px;
+  background-color: #f8f9fa;
 }
 
 .upload-status.success {
-  background-color: #ecfdf5;
-  color: var(--success-color);
+  color: #28a745;
+  background-color: #d4edda;
+}
+
+.error-message {
+  color: #dc3545;
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f8d7da;
+  border-radius: 4px;
+}
+
+.upload-progress {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.upload-progress:empty {
+  display: none;
 }
 
 /* Question Form */
@@ -135,20 +178,6 @@ body {
   cursor: not-allowed;
 }
 
-/* Error Message */
-.error-message {
-  background-color: #fef2f2;
-  border: 1px solid #fee2e2;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.error-message p {
-  color: var(--error-color);
-  margin: 0;
-}
-
 /* Response Container */
 .response-container {
   margin-top: 2rem;
@@ -160,10 +189,40 @@ body {
   padding: 1.5rem;
 }
 
-.answer-section h3 {
-  margin-top: 0;
-  color: var(--primary-color);
-  margin-bottom: 1rem;
+.answer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.answer-header h3 {
+  margin: 0;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.export-buttons button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background-color: #007bff;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 0.9rem;
+}
+
+.export-buttons button:hover {
+  background-color: #0056b3;
+}
+
+.export-buttons button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
 .answer-content {
@@ -203,4 +262,21 @@ body {
 
 .related-links a:hover {
   background-color: #f1f5f9;
+}
+
+/* File Types */
+.file-types {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.history-item-details .type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  font-size: 0.8rem;
 }

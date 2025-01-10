@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import './App.css';
+import DocumentHistory from './components/DocumentHistory';
+import SearchHistory from './components/SearchHistory';
+import ProgressBar from './components/ProgressBar';
 
 // Workaround for react-pdf
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
@@ -82,12 +85,17 @@ function App() {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [currentUploads, setCurrentUploads] = useState([]);
   const [error, setError] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadError, setUploadError] = useState(null);
   const [theme, setTheme] = useState('light');
   const [isDragging, setIsDragging] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
+  const fileInputRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     // Recupera il tema salvato dal localStorage o usa il tema chiaro come default
@@ -149,76 +157,106 @@ function App() {
     setIsDragging(false);
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleFileChange = async (event) => {
+    const files = Array.from(event.target.files);
+    await handleFiles(files);
+  };
+
+  const handleDrop = async (event) => {
+    event.preventDefault();
     setIsDragging(false);
-
-    const droppedFiles = e.dataTransfer.files;
-    if (droppedFiles && droppedFiles.length > 0) {
-      handleFileUpload(Array.from(droppedFiles));
-    }
+    const files = Array.from(event.dataTransfer.files);
+    await handleFiles(files);
   };
 
-  const handleManualUpload = (e) => {
-    const selectedFiles = e.target.files;
-    if (selectedFiles && selectedFiles.length > 0) {
-      handleFileUpload(Array.from(selectedFiles));
-    }
-  };
-
-  const handleFileUpload = async (files) => {
-    if (!Array.isArray(files) || files.length === 0) {
-      setUploadStatus('No files selected');
-      return;
-    }
-    
+  const handleFiles = async (files) => {
     if (files.length > 2) {
-      setUploadStatus('Maximum 2 PDF files allowed');
+      setUploadError('You can only upload up to 2 files at once');
       return;
     }
 
-    // Verifica che tutti i file siano PDF
-    for (let file of files) {
-      if (!file.type || file.type !== 'application/pdf') {
-        setUploadStatus('Only PDF files are allowed');
-        return;
-      }
-    }
+    const validTypes = [
+      'application/pdf',
+      'text/plain',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
 
-    setLoading(true);
-    setError(null);
-    setUploadStatus('Uploading PDFs...');
+    const invalidFiles = files.filter(file => !validTypes.includes(file.type));
+    if (invalidFiles.length > 0) {
+      setUploadError('Only PDF, TXT, and DOC files are allowed');
+      return;
+    }
 
     try {
+      setUploadError(null);
+      setLoading(true);
+      
+      // Initialize progress for each file
+      const newUploads = Array.from(files).map(file => ({
+        id: Math.random().toString(36).substr(2, 9),
+        name: file.name,
+        progress: 0
+      }));
+      
+      setCurrentUploads(newUploads);
+      
       const formData = new FormData();
       files.forEach(file => {
-        formData.append('pdf', file);
+        formData.append('documents', file);
       });
 
-      const res = await fetch('http://localhost:5000/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      const data = await res.json();
+      const xhr = new XMLHttpRequest();
       
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to upload PDFs');
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const totalProgress = (event.loaded / event.total) * 100;
+          // Update progress for all files
+          setCurrentUploads(prevUploads =>
+            prevUploads.map(upload => ({
+              ...upload,
+              progress: totalProgress
+            }))
+          );
+        }
+      };
+
+      const response = await new Promise((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            } catch (error) {
+              reject(new Error('Invalid response format'));
+            }
+          } else {
+            reject(new Error(xhr.statusText));
+          }
+        };
+        
+        xhr.onerror = () => reject(new Error('Network error'));
+        
+        xhr.open('POST', 'http://localhost:5000/upload');
+        xhr.send(formData);
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || 'Upload failed');
       }
 
-      if (!data.files || !Array.isArray(data.files)) {
-        throw new Error('Invalid response from server');
-      }
-
-      setUploadedFiles(data.files);
-      setUploadStatus(
-        `Successfully uploaded ${data.files.length} PDF${data.files.length > 1 ? 's' : ''}`
-      );
-    } catch (err) {
-      console.error('Upload error:', err);
-      setUploadStatus('Upload failed: ' + (err.message || 'Unknown error'));
-      setUploadedFiles([]);
+      setUploadedFiles(response.files);
+      setUploadStatus(`Successfully uploaded ${response.files.length} file(s)`);
+      
+      // Clear progress bars after a short delay
+      setTimeout(() => {
+        setCurrentUploads([]);
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError(error.message || 'Failed to upload files');
+      setCurrentUploads([]);
     } finally {
       setLoading(false);
     }
@@ -262,6 +300,45 @@ function App() {
     }
   };
 
+  const exportQuery = async (format) => {
+    if (!response || !question) return;
+
+    try {
+      setExporting(true);
+      const exportResponse = await fetch('http://localhost:5000/export-query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          format,
+          question,
+          answer: response.answer
+        })
+      });
+
+      if (!exportResponse.ok) {
+        throw new Error('Export failed');
+      }
+
+      // Create a blob from the response
+      const blob = await exportResponse.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `query-result-${Date.now()}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Export error:', err);
+      setError('Failed to export query result');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className={`app-container ${theme}-theme`}>
       <button className="theme-toggle" onClick={toggleTheme}>
@@ -273,32 +350,62 @@ function App() {
       </header>
 
       <main className="main-content">
-        <div 
-          className={`upload-section ${isDragging ? 'dragging' : ''}`}
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <label htmlFor="pdf-upload" className="upload-label">
-            {uploadedFiles.length > 0 ? '📄 Change PDF Documents' : '📄 Upload PDF Documents'}
-          </label>
-          <p className="drag-text">
-            Drag and drop up to 2 PDFs here or click to select
-          </p>
-          <input
-            type="file"
-            id="pdf-upload"
-            accept=".pdf,application/pdf"
-            onChange={handleManualUpload}
-            className="file-input"
-            disabled={loading}
-            multiple
-          />
-          {uploadStatus && (
-            <div className={`upload-status ${uploadedFiles.length > 0 ? 'success' : ''}`}>
-              {uploadStatus}
+        <div className="left-panel">
+          <div className="upload-section">
+            <h2>Upload Documents</h2>
+            <div 
+              className={`drop-zone ${isDragging ? 'dragging' : ''}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <input
+                type="file"
+                onChange={handleFileChange}
+                accept=".pdf,.txt,.doc,.docx"
+                multiple
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+              />
+              <div className="upload-content">
+                <p>Drag & Drop files here or</p>
+                <button onClick={() => fileInputRef.current.click()}>
+                  Choose Files
+                </button>
+                <p className="file-types">Supported formats: PDF, TXT, DOC</p>
+              </div>
             </div>
+            
+            {currentUploads.length > 0 && (
+              <div className="upload-progress">
+                {currentUploads.map(upload => (
+                  <ProgressBar
+                    key={upload.id}
+                    fileName={upload.name}
+                    progress={upload.progress}
+                  />
+                ))}
+              </div>
+            )}
+            
+            {uploadError && (
+              <div className="error-message">{uploadError}</div>
+            )}
+            {uploadStatus && (
+              <div className={`upload-status ${uploadedFiles.length > 0 ? 'success' : ''}`}>
+                {uploadStatus}
+              </div>
+            )}
+          </div>
+          
+          <DocumentHistory />
+          
+          {recentSearches.length > 0 && (
+            <RecentSearches 
+              searches={recentSearches}
+              onSearchClick={handleSearchClick}
+              onClear={clearRecentSearches}
+            />
           )}
         </div>
 
@@ -335,29 +442,40 @@ function App() {
             </div>
           </form>
 
-          <RecentSearches 
-            searches={recentSearches}
-            onSearchClick={handleSearchClick}
-            onClear={clearRecentSearches}
-          />
-        </div>
+          {error && (
+            <div className="error-message">
+              <p>{error}</p>
+            </div>
+          )}
 
-        {error && (
-          <div className="error-message">
-            <p>{error}</p>
-          </div>
-        )}
-
-        {response && (
-          <div className="response-container">
-            <div className="answer-section">
-              <h3>Answer:</h3>
-              <div className="answer-content">
-                {response.answer}
+          {response && (
+            <div className="response-container">
+              <div className="answer-section">
+                <div className="answer-header">
+                  <h3>Answer:</h3>
+                  <div className="export-buttons">
+                    <button 
+                      onClick={() => exportQuery('pdf')}
+                      disabled={exporting}
+                    >
+                      Export as PDF
+                    </button>
+                    <button 
+                      onClick={() => exportQuery('doc')}
+                      disabled={exporting}
+                    >
+                      Export as DOC
+                    </button>
+                  </div>
+                </div>
+                <div className="answer-content">
+                  {response.answer}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        <SearchHistory />
       </main>
     </div>
   );
